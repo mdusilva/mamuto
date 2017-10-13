@@ -19,8 +19,34 @@ def _getfname(function):
     else:
         raise TypeError("Input function must be a user defined FunctionType or MethodType")
 
-def create_config_file(filename="cluster.cfg", hosts={'localhost':2}, workdir="", python="", nice=0):
-    """Create configation file with parameters to create execnet gateways"""
+def create_config_file(filename="cluster.cfg", hosts={'localhost':2}, workdir="", python="python", nice=0):
+    """
+    Create configation file with parameters to create execnet gateways
+
+    Check execnet package documentation for more information.
+    
+    Arguments
+    ---------
+
+        - filename (optional): string
+            name of the configuration file that will be created. Default is 'cluster.cfg'
+            
+        - hosts (optional): dictionary {string: int}
+            Python dictionary where each key is the name of a node and the value is 
+            the number of cores to use in that node. Default is {'localhost': 2}
+        
+        - workdir (optional): string
+            change to this working direcotry in all nodes. Default is "", no change
+
+        - python (optinonal): string
+            specify which Python interpreter to use. Default is "python". Must include full path 
+            or be discoverable in system PATH
+
+        - nice (optional: int
+            nice level of the interpreter process. Default is 0
+            
+    """
+
     config = configparser.ConfigParser()
     config['parameters'] = {}
     parameters = config['parameters']
@@ -74,14 +100,33 @@ def _zip_default(*args):
 
 class Mapper(object):
     """
-    Map on cluster
+    Map functions on a cluster
+
+    Compute functions by distributing iterable arguments over a cluster. 
+    Communication is done via ssh using the package execnet, 
+    it is advisable to have passwordless ssh accesss between nodes.
+    Functions are not copied to the remote nodes, instead only their names 
+    are passed so they must be present on the remote sides and reachable by 
+    their names. The modules defining functions must be copied to the remote 
+    hosts and it must be possible to import either by installing or by changing
+    to an appropriate directory.
+
+    Arguments
+    ---------
+
+        - configfile: string
+            name of configation file with parameters to create execnet gateways. 
+            Create new configuration file with create_config_file function 
+            if needed.
+
+        - depends (optional): list
+            list of names (strings) of modules containing the functions that 
+            will be mapped
+
     """
 
     def __init__(self, configfile, depends=None):
-        """
-        Prepare the cluster to handle the communications
-        
-        """
+        """Initialize mapper"""
         self.depends = []
         self.function_dictionary = {}
         self.arguments_dictionary = {}
@@ -94,7 +139,7 @@ class Mapper(object):
         """
         Setup a cluster and initialize the remote processes
         """
-        hosts, working_dir, python, nice =  _load_config_file(filename=configfile)
+        hosts, working_dir, python, nice = _load_config_file(filename=configfile)
         #logger.info('Setting up cluster in hosts: %s' % ', '.join(hosts))
         self.gw = []
         self.channels = []
@@ -114,7 +159,15 @@ class Mapper(object):
         #logger.info('Remote output: %s' % ', '.join(results))
 
     def add_function(self, function):
-        """Add function to remote worker processes"""
+        """
+        Add function name to remote worker processes
+        
+        Arguments
+        ---------
+
+            - function: Python function
+                function to be computed by workers.
+        """
         function_name = _getfname(function)
         self.function_dictionary[function_name] = function
         #logger.info('Sending function name and setting up in remote processes')
@@ -123,7 +176,33 @@ class Mapper(object):
         #logger.info('Remote output: %s' % ', '.join(results))
 
     def add_remote_arguments(self, function, args):
-        """Add fixed arguments to a given function in remote worker processes"""
+        """
+        Add fixed arguments to a given function in remote worker processes
+
+        Sometimes it is better to keep some or all of a function arguments in 
+        the remote Python worker processes as a way to decrease the ammount of 
+        data transfered.
+        
+        Arguments
+        ---------
+
+            - function: Python function
+                function that takes the argument(s). Must be in function_dictionary
+
+            - args: list
+                list of arguments to send to the remote workers. The list must have as 
+                many elements as the number of arguments taken by the function, in the 
+                same order. Use None to mark arguments that will not be passed.
+        
+        Example
+        -------
+            
+            If the function takes two arguments do like this to pass only bar as 
+            the second argument:
+
+            >>> add_remote_arguments(foo, [None, bar])
+                
+        """
         function_name = _getfname(function)
         if function_name in  self.function_dictionary:
             modified_args = [[False] if a is None else a for a in args]
@@ -136,7 +215,33 @@ class Mapper(object):
              raise ValueError("Function not included in function dictionary: use 'add_function' method")
 
     def remap(self, function, args):
-        """Remote execution version of map: map arguments with function"""
+        """
+        Remote execution version of map: map arguments with function
+
+        
+        Arguments
+        ---------
+
+            - function: Python function
+                function to map. Must be in function_dictionary
+
+            - args: list
+                list of arguments to send to the remote workers. The list must have as 
+                many elements as the number of arguments taken by the function, in the 
+                same order. Use None to mark arguments that will not be passed.
+                The arguments must consist of either iterables or a single value. The 
+                iterables must all have the length.
+
+        Example
+        -------
+            
+            If the function takes two arguments do like this to pass only bar as 
+            the first argument (compare with the use of add_remote_arguments):
+
+            >>> remap(foo, [bar, None])
+
+
+        """
         function_name = _getfname(function)
         if function_name in  self.function_dictionary:
             modified_args = [[False] if a is None else a for a in args]

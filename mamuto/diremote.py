@@ -1,3 +1,11 @@
+"""
+Module that is executed in the remote hosts
+
+Imports necessary modules and then receive jobs in a loop 
+to either compute functions, update function_dictionary or 
+add new fixed arguments to a function.
+"""
+
 import execnet
 import pickle
 from itertools import zip_longest, chain, repeat
