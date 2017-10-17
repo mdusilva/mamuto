@@ -1,0 +1,3 @@
+# exclude installation and compiled files
+/mamuto.egg-info
+*.pyc
